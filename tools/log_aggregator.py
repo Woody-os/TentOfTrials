@@ -263,9 +263,10 @@ class LogAggregator:
         return False
 
     def get_summary(self) -> Dict[str, Any]:
+        time_range = self._get_time_range()
         return {
             'total_entries': len(self.entries),
-            'time_range': self._get_time_range(),
+            'time_range': time_range,
             'by_level': dict(self.level_counts.most_common()),
             'by_service': dict(self.service_counts.most_common()),
             'by_hour': dict(sorted(self.hourly_counts.items())),
@@ -420,6 +421,12 @@ def main():
     if args.verbose:
         logger.setLevel(logging.DEBUG)
 
+    # --- FIX Issue #1: Validate at least one input source ---
+    if not args.input and not args.dir:
+        print("Error: No input source provided.", file=sys.stderr)
+        print("Usage: python3 log_aggregator.py --input <file> or --dir <directory>", file=sys.stderr)
+        return 1
+
     aggregator = LogAggregator()
 
     if args.input:
@@ -445,9 +452,15 @@ def main():
             print(f"  ... and {len(results) - 20} more")
 
     summary = aggregator.get_summary()
+
+    # --- FIX Issue #1: Handle None time_range safely ---
+    time_range = summary.get('time_range')
+    time_range_start = time_range.get('start', 'N/A') if time_range else 'N/A'
+    time_range_end = time_range.get('end', 'N/A') if time_range else 'N/A'
+
     print(f"\nSummary:")
     print(f"  Total entries: {summary['total_entries']:,}")
-    print(f"  Time range: {summary.get('time_range', {}).get('start', 'N/A')} to {summary.get('time_range', {}).get('end', 'N/A')}")
+    print(f"  Time range: {time_range_start} to {time_range_end}")
     print(f"  Error rate: {summary.get('error_rate', 0)}%")
     print(f"  By level: {', '.join(f'{k}={v}' for k, v in summary.get('by_level', {}).items())}")
     print(f"  By service: {', '.join(f'{k}={v}' for k, v in summary.get('by_service', {}).items())}")
