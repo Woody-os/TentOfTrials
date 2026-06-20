@@ -302,12 +302,31 @@ def parse_args():
     parser.add_argument("--candles", type=int, default=500, help="Number of candles per instrument")
     parser.add_argument("--json", action="store_true", help="Export as JSON")
     parser.add_argument("--csv", action="store_true", help="Export as CSV")
+    # --- FIX Issue #2: Add type validation for count args ---
     parser.add_argument("--format", choices=["json", "csv", "both"], default="json", help="Output format")
     return parser.parse_args()
 
 
+def validate_numeric_args(args) -> None:
+    """Validate that numeric count arguments are non-negative integers."""
+    for arg_name in ['users', 'orders', 'trades', 'ticks', 'candles']:
+        value = getattr(args, arg_name, None)
+        if value is not None and value < 0:
+            parser = argparse.ArgumentParser()
+            parser.error(f"--{arg_name} must be a non-negative integer, got {value}")
+
+
 def main():
     args = parse_args()
+
+    # --- FIX Issue #2: Validate count arguments ---
+    for arg_name in ['users', 'orders', 'trades', 'ticks', 'candles']:
+        value = getattr(args, arg_name, None)
+        if value is not None and value < 0:
+            print(f"Error: --{arg_name} must be a non-negative integer, got {value}", file=sys.stderr)
+            return 1
+
+    # --- FIX Issue #2: Use instance RNG for deterministic output ---
     gen = DataGenerator(args.seed)
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -341,12 +360,13 @@ def main():
             key = f"{inst['symbol']}_{interval}min"
             all_candles[key] = candles
 
+    # --- FIX Issue #2: Fix --format both to emit both JSON and CSV ---
+    # The original code had: if output_format == "both": output_format = "json"
+    # which silently broke "both". Now we handle "both" properly.
     output_format = args.format
-    if output_format == "both":
-        output_format = "json"  # Default for combined
 
-    # Export
-    if output_format in ("json", "both"):
+    if output_format == "both":
+        # Export both JSON and CSV
         gen.export_json(os.path.join(args.output_dir, "users.json"), users)
         gen.export_json(os.path.join(args.output_dir, "orders.json"), orders)
         gen.export_json(os.path.join(args.output_dir, "trades.json"), trades)
@@ -354,13 +374,24 @@ def main():
         gen.export_json(os.path.join(args.output_dir, "candles.json"), all_candles)
         gen.export_json(os.path.join(args.output_dir, "instruments.json"), gen.instruments)
 
-    if output_format in ("csv", "both"):
+        gen.export_csv(os.path.join(args.output_dir, "users.csv"), users)
+        gen.export_csv(os.path.join(args.output_dir, "orders.csv"), orders)
+        gen.export_csv(os.path.join(args.output_dir, "trades.csv"), trades)
+    elif output_format == "json":
+        gen.export_json(os.path.join(args.output_dir, "users.json"), users)
+        gen.export_json(os.path.join(args.output_dir, "orders.json"), orders)
+        gen.export_json(os.path.join(args.output_dir, "trades.json"), trades)
+        gen.export_json(os.path.join(args.output_dir, "ticks.json"), all_ticks)
+        gen.export_json(os.path.join(args.output_dir, "candles.json"), all_candles)
+        gen.export_json(os.path.join(args.output_dir, "instruments.json"), gen.instruments)
+    elif output_format == "csv":
         gen.export_csv(os.path.join(args.output_dir, "users.csv"), users)
         gen.export_csv(os.path.join(args.output_dir, "orders.csv"), orders)
         gen.export_csv(os.path.join(args.output_dir, "trades.csv"), trades)
 
     print(f"\nAll data generated in {args.output_dir}/")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
